@@ -1,7 +1,16 @@
+locals {
+  common_tags = {
+    Environment = "dev"
+    Project     = "eks-deployment"
+    Owner       = "devops-team"
+  }
+}
+
 resource "aws_security_group" "eks_sg" {
   name        = "${var.prefix}-eks-sg"
   description = "EKS Security Group"
   vpc_id      = var.vpc_id
+
   ingress {
     from_port   = 80
     to_port     = 80
@@ -9,6 +18,7 @@ resource "aws_security_group" "eks_sg" {
     cidr_blocks = ["10.166.44.0/22"]
     description = "Allow HTTP Rule"
   }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -16,14 +26,11 @@ resource "aws_security_group" "eks_sg" {
     cidr_blocks = ["0.0.0.0/0"]
     description = "Allow all outbound traffic"
   }
-  tags = {
-    Name = "${var.prefix}-eks-sg"
-  }
-}
 
-# data "aws_ssm_parameter" "eks_ami" {
-#   name  = "/aws/service/eks/optimized-ami/1.27/amazon-linux-2/recommended/image_id"
-# }
+  tags = merge({
+    Name = "${var.prefix}-eks-sg"
+  }, local.common_tags)
+}
 
 resource "aws_iam_role" "eks_cluster" {
   name = "eks-cluster-${var.cluster_name}"
@@ -42,6 +49,8 @@ resource "aws_iam_role" "eks_cluster" {
   ]
 }
 POLICY
+
+  tags = local.common_tags
 }
 
 resource "aws_iam_role_policy_attachment" "eks_cluster_policy" {
@@ -55,8 +64,8 @@ resource "aws_eks_cluster" "eks" {
   role_arn = aws_iam_role.eks_cluster.arn
 
   vpc_config {
-    subnet_ids = var.subnet_ids
-    security_group_ids = [aws_security_group.eks_sg.id]
+    subnet_ids           = var.subnet_ids
+    security_group_ids   = [aws_security_group.eks_sg.id]
     endpoint_private_access = true
     endpoint_public_access  = false
   }
@@ -74,6 +83,10 @@ resource "aws_eks_cluster" "eks" {
     authentication_mode = "API_AND_CONFIG_MAP"
   }
 
+  tags = merge({
+    Name = var.cluster_name
+  }, local.common_tags)
+
   depends_on = [
     aws_iam_role_policy_attachment.eks_cluster_policy
   ]
@@ -83,6 +96,10 @@ resource "aws_kms_key" "eks_secrets" {
   description             = "KMS key for EKS secrets encryption"
   deletion_window_in_days = 30
   enable_key_rotation     = true
+
+  tags = merge({
+    Name = "eks-secrets-kms-key"
+  }, local.common_tags)
 }
 
 resource "aws_kms_alias" "eks_secrets_alias" {
@@ -109,6 +126,8 @@ resource "aws_iam_role" "eks_worker_nodes" {
     }]
     Version = "2012-10-17"
   })
+
+  tags = local.common_tags
 }
 
 resource "aws_iam_role_policy_attachment" "nodes_worker_policy" {
@@ -150,18 +169,26 @@ resource "aws_launch_template" "eks_nodes" {
   ebs_optimized = true
 
   metadata_options {
-    http_endpoint               = "enabled"
-    http_tokens                 = "required"
-    instance_metadata_tags      = "enabled"
+    http_endpoint          = "enabled"
+    http_tokens            = "required"
+    instance_metadata_tags = "enabled"
   }
 
   tag_specifications {
     resource_type = "instance"
 
-    tags = {
+    tags = merge({
       Name = "${var.cluster_name}-eks-node"
-    }
+    }, local.common_tags)
   }
+
+  tag_specifications {
+    resource_type = "volume"
+
+    tags = local.common_tags
+  }
+
+  tags = local.common_tags
 }
 
 resource "aws_eks_node_group" "managed_nodes" {
@@ -192,6 +219,10 @@ resource "aws_eks_node_group" "managed_nodes" {
     role = "workers"
   }
 
+  tags = merge({
+    Name = "${var.cluster_name}-managed-nodes"
+  }, local.common_tags)
+
   depends_on = [
     aws_iam_role_policy_attachment.nodes_worker_policy,
     aws_iam_role_policy_attachment.nodes_cni_policy,
@@ -199,4 +230,3 @@ resource "aws_eks_node_group" "managed_nodes" {
     aws_iam_role_policy_attachment.nodes_ssm_policy,
   ]
 }
-
