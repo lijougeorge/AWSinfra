@@ -22,8 +22,3 @@ resource "aws_eks_addon" "aws_ebs_csi_driver" {
   cluster_name  = aws_eks_cluster.eks.name
   addon_name    = "aws-ebs-csi-driver"
 }
-
-resource "aws_eks_addon" "mountpoint_for_amazon_s3_csi_driver" {
-  cluster_name  = aws_eks_cluster.eks.name
-  addon_name    = "mountpoint-for-amazon-s3-csi-driver"
-}
