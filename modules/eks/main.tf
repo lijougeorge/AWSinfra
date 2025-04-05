@@ -58,7 +58,14 @@ resource "aws_eks_cluster" "eks" {
     subnet_ids = var.subnet_ids
     security_group_ids = [aws_security_group.eks_sg.id]
     endpoint_private_access = true
-    endpoint_public_access  = true
+    endpoint_public_access  = false
+  }
+
+  encryption_config {
+    resources = ["secrets"]
+    provider {
+      key_arn = aws_kms_key.eks_secrets.arn
+    }
   }
 
   enabled_cluster_log_types = var.enable_cluster_log_types
@@ -70,6 +77,17 @@ resource "aws_eks_cluster" "eks" {
   depends_on = [
     aws_iam_role_policy_attachment.eks_cluster_policy
   ]
+}
+
+resource "aws_kms_key" "eks_secrets" {
+  description             = "KMS key for EKS secrets encryption"
+  deletion_window_in_days = 30
+  enable_key_rotation     = true
+}
+
+resource "aws_kms_alias" "eks_secrets_alias" {
+  name          = "alias/eks-secrets"
+  target_key_id = aws_kms_key.eks_secrets.key_id
 }
 
 resource "aws_eks_access_entry" "devops_admin_access" {
@@ -122,11 +140,19 @@ resource "aws_launch_template" "eks_nodes" {
     device_name = "/dev/xvda"
 
     ebs {
-      volume_size           = 30
+      volume_size           = 50
       volume_type           = "gp3"
       encrypted             = true
       delete_on_termination = true
     }
+  }
+
+  ebs_optimized = true
+
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"
+    instance_metadata_tags      = "enabled"
   }
 
   tag_specifications {
@@ -145,7 +171,7 @@ resource "aws_eks_node_group" "managed_nodes" {
   subnet_ids      = var.subnet_ids
 
   capacity_type = "ON_DEMAND"
-  ami_type      = "AL2_x86_64"
+  ami_type      = "AL2023_x86_64_STANDARD"
 
   launch_template {
     id      = aws_launch_template.eks_nodes.id
