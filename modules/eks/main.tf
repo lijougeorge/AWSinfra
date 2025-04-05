@@ -147,6 +147,8 @@ resource "aws_launch_template" "eks_nodes" {
     }
   }
 
+  ebs_optimized = true
+
   metadata_options {
     http_endpoint               = "enabled"
     http_tokens                 = "required"
