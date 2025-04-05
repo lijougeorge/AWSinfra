@@ -1,0 +1,98 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "This template sets up an S3 bucket, IAM OIDC provider for GitHub, and an IAM role for GitHub Actions.",
+    "Parameters": {
+      "AccountID": {
+        "Description": "AWS Account ID",
+        "Type": "String"
+      }
+    },
+    "Resources": {
+      "S3Bucket": {
+        "Type": "AWS::S3::Bucket",
+        "Properties": {
+          "BucketName": {
+            "Fn::Sub": "teraform-tfstate-bucket-jklgfd"
+          },
+          "AccessControl": "Private",
+          "VersioningConfiguration": {
+            "Status": "Enabled"
+          }
+        }
+      },
+      "OIDCProvider": {
+        "Type": "AWS::IAM::OIDCProvider",
+        "Properties": {
+          "Url": "https://token.actions.githubusercontent.com",
+          "ClientIdList": [
+            "sts.amazonaws.com"
+          ],
+          "ThumbprintList": [
+            "6938fd4d98bab03faadb97b34396831e3780aea1"
+          ]
+        }
+      },
+      "IAMRole": {
+        "Type": "AWS::IAM::Role",
+        "Properties": {
+          "RoleName": "TerraformExecutionRole",
+          "AssumeRolePolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "Federated": {
+                    "Fn::Sub": "arn:aws:iam::${AccountID}:oidc-provider/token.actions.githubusercontent.com"
+                  }
+                },
+                "Action": "sts:AssumeRoleWithWebIdentity",
+                "Condition": {
+                  "StringEquals": {
+                    "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+                  },
+                  "StringLike": {
+                    "token.actions.githubusercontent.com:sub": "repo:Abhi1516/*"
+                  }
+                }
+              }
+            ]
+          },
+          "Policies": [
+            {
+              "PolicyName": "GithubOIDCPolicy",
+              "PolicyDocument": {
+                "Version": "2012-10-17",
+                "Statement": [
+                  {
+                    "Effect": "Allow",
+                    "Action": [
+                      "s3:*",
+                      "ec2:*",
+                      "iam:*"
+                    ],
+                    "Resource": "*"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    "Outputs": {
+      "S3BucketName": {
+        "Description": "S3 Bucket for Terraform State",
+        "Value": {
+          "Ref": "S3Bucket"
+        }
+      },
+      "IAMRoleARN": {
+        "Description": "IAM Role ARN for GitHub OIDC",
+        "Value": {
+          "Fn::GetAtt": ["IAMRole", "Arn"]
+        }
+      }
+    }
+  }
+  
