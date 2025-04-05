@@ -88,13 +88,6 @@ resource "aws_lb_listener" "http" {
   }
 }
 
-resource "aws_lb_target_group_attachment" "tg_attachment" {
-  count            = length(data.terraform_remote_state.compute.outputs.instance_ids)
-  target_group_arn = aws_lb_target_group.alb_tg.arn
-  target_id        = data.terraform_remote_state.compute.outputs.instance_ids[count.index]
-  port             = var.target_group_port
-}
-
 resource "aws_s3_bucket_policy" "alb_logs_policy" {
   bucket = "my-prod-alb-logs-992382407348"
 
