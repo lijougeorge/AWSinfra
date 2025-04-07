@@ -8,7 +8,7 @@ resource "aws_iam_role" "efs_csi_driver" {
       {
         Effect = "Allow",
         Principal = {
-          Federated = "arn:aws:iam::${var.Account_ID}:oidc-provider/"${replace(aws_iam_openid_connect_provider.oidc_provider.url, "https://", "")}
+          Federated = "arn:aws:iam::${var.Account_ID}:oidc-provider/${replace(aws_iam_openid_connect_provider.oidc_provider.url, "https://", "")}"
         },
         Action = "sts:AssumeRoleWithWebIdentity",
         Condition = {
@@ -46,7 +46,7 @@ resource "aws_iam_role" "ebs_csi_driver" {
       {
         Effect = "Allow",
         Principal = {
-          Federated = "arn:aws:iam::${var.Account_ID}:oidc-provider/"${replace(aws_iam_openid_connect_provider.oidc_provider.url, "https://", "")}
+          Federated = "arn:aws:iam::${var.Account_ID}:oidc-provider/${replace(aws_iam_openid_connect_provider.oidc_provider.url, "https://", "")}"
         },
         Action = "sts:AssumeRoleWithWebIdentity",
         Condition = {
