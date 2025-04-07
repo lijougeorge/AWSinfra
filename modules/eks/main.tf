@@ -1,23 +1,15 @@
 locals {
   common_tags = {
-    Environment = "dev"
-    Project     = "eks-deployment"
-    Owner       = "devops-team"
+    Environment = "uat"
+    Project     = "ihub"
+    Owner       = "EvidenDevOpsTeam"
   }
 }
 
 resource "aws_security_group" "eks_sg" {
-  name        = "${var.prefix}-eks-sg"
+  name        = "${var.prefix}-eks-sg-uat-ihub-cluster-ControlPlaneSecurityGroup"
   description = "EKS Security Group"
   vpc_id      = var.vpc_id
-
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["10.166.44.0/22"]
-    description = "Allow HTTP Rule"
-  }
 
   egress {
     from_port   = 0
@@ -109,7 +101,7 @@ resource "aws_kms_alias" "eks_secrets_alias" {
 
 resource "aws_eks_access_entry" "devops_admin_access" {
   cluster_name  = aws_eks_cluster.eks.name
-  principal_arn = "arn:aws:iam::588738582428:role/Mgmt-DevOpsAdmin-eviden"
+  principal_arn = "arn:aws:iam::232247293372:role/Eviden-DSS-Automation"
   type          = "STANDARD"
 }
 
@@ -153,13 +145,13 @@ resource "aws_iam_role_policy_attachment" "nodes_ssm_policy" {
 resource "aws_launch_template" "eks_nodes" {
   name_prefix   = "${var.cluster_name}-nodes"
   description   = "Launch template for EKS managed nodes"
-  instance_type = "t3.medium"
+  instance_type = "m5.xlarge"
 
   block_device_mappings {
     device_name = "/dev/xvda"
 
     ebs {
-      volume_size           = 50
+      volume_size           = 200
       volume_type           = "gp3"
       encrypted             = true
       delete_on_termination = true
