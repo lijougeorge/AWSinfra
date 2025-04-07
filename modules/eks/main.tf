@@ -1,8 +1,12 @@
 locals {
   common_tags = {
-    Environment = "uat"
     Project     = "ihub"
     Owner       = "EvidenDevOpsTeam"
+  }
+  environments = {
+    test = test-ihub-eks-managed-nodes
+    uat = uat-ihub-eks-managed-nodes
+    pre-pord = pre-pord-ihub-eks-managed-nodes
   }
 }
 
@@ -143,8 +147,9 @@ resource "aws_iam_role_policy_attachment" "nodes_ssm_policy" {
 }
 
 resource "aws_launch_template" "eks_nodes" {
-  name_prefix   = "${var.cluster_name}-nodes"
-  description   = "Launch template for EKS managed nodes"
+  for_each = local.environments
+  name_prefix   = "${each.key}-launch-template"
+  description   = "Launch template for EKS managed nodes for ${each.key} namespaces"
   instance_type = "m5.xlarge"
 
   block_device_mappings {
@@ -170,7 +175,7 @@ resource "aws_launch_template" "eks_nodes" {
     resource_type = "instance"
 
     tags = merge({
-      Name = "${var.cluster_name}-eks-node"
+      Name = "${each.key}-ihub-node"
     }, local.common_tags)
   }
 
@@ -184,8 +189,9 @@ resource "aws_launch_template" "eks_nodes" {
 }
 
 resource "aws_eks_node_group" "managed_nodes" {
+  for_each = local.environments
   cluster_name    = aws_eks_cluster.eks.name
-  node_group_name = "${var.cluster_name}-managed-nodes"
+  node_group_name = each.value
   node_role_arn   = aws_iam_role.eks_worker_nodes.arn
   subnet_ids      = var.subnet_ids
 
@@ -193,7 +199,7 @@ resource "aws_eks_node_group" "managed_nodes" {
   ami_type      = "AL2023_x86_64_STANDARD"
 
   launch_template {
-    id      = aws_launch_template.eks_nodes.id
+    id      = aws_launch_template.eks_nodes[each.key].id
     version = "$Latest"
   }
 
@@ -209,10 +215,11 @@ resource "aws_eks_node_group" "managed_nodes" {
 
   labels = {
     role = "workers"
+    env = each.key
   }
 
   tags = merge({
-    Name = "${var.cluster_name}-managed-nodes"
+    Name = each.value
   }, local.common_tags)
 
   depends_on = [
