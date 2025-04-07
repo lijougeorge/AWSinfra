@@ -54,7 +54,7 @@ jobs:
         run: |
           echo "Running Terraform plan for module..."
           chmod +x script.sh
-          ./script.sh apply eks
+          ./script.sh plan eks
 
       - name: Post Build Step
         run: |
