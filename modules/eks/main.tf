@@ -6,7 +6,7 @@ locals {
   environments = {
     test = test-ihub-eks-managed-nodes
     uat = uat-ihub-eks-managed-nodes
-    pre-pord = pre-pord-ihub-eks-managed-nodes
+    pre-pord = pre-prod-ihub-eks-managed-nodes
   }
 }
 
