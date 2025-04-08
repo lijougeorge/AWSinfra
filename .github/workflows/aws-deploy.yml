@@ -18,7 +18,7 @@ jobs:
       - name: Configure AWS Credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v2
         with:
-          role-to-assume: arn:aws:iam::232247293372:role/Eviden-DSS-Automation
+          role-to-assume: arn:aws:iam::058264149084:role/Eviden-DSS-Automation
           aws-region: eu-west-1
 
       - name: Verify AWS Authentication
