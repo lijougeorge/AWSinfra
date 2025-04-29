@@ -137,3 +137,7 @@ variable "enable_cluster_log_types" {
   description = "Enable Cluster Logs"
   type = list(string)
 }
+variable "iam_roles" {
+  description = "List of IAM role ARNs to grant EKS access"
+  type        = list(string)
+}

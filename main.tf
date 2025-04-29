@@ -35,4 +35,6 @@ module "eks" {
   desired_size = var.desired_size
   max_size = var.max_size
   min_size = var.min_size
+  environment = var.environment
+  iam_roles   = var.iam_roles
 }
