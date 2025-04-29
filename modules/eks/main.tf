@@ -1,24 +1,38 @@
 locals {
+  environment = var.environment
+  project     = "ihub"
+
   common_tags = {
-    Project     = "ihub"
+    Project     = local.project
     Owner       = "EvidenDevOpsTeam"
+    Environment = local.environment
+    ManagedBy   = "Terraform"
   }
-  environments = {
-    test = "test-ihub-eks-managed-nodes"
-    uat = "uat-ihub-eks-managed-nodes"
-    pre-pord = "pre-prod-ihub-eks-managed-nodes"
+
+  eks_cluster_name     = "${local.environment}-${local.project}-eks-cluster"
+  eks_sg_name          = "${local.environment}-${local.project}-eks-sg"
+  eks_node_role_name   = "${local.environment}-${local.project}-eks-node-role"
+  eks_launch_template  = "${local.environment}-${local.project}-eks-launch-template"
+  eks_kms_key_name     = "${local.environment}-${local.project}-eks-secrets-kms-key"
+  eks_kms_key_alias    = "alias/${local.environment}-${local.project}-eks-secrets"
+  eks_instance_name    = "${local.environment}-${local.project}-eks-node"
+  eks_volume_name      = "${local.environment}-${local.project}-eks-volume"
+
+  eks_environments = {
+    for env in ["test", "uat", "pre-prod"] :
+    env => "${env}-${local.project}-eks-managed-nodes"
   }
 }
 
 resource "aws_security_group" "eks_sg" {
-  name        = "${var.prefix}-eks-sg-uat-ihub-cluster-ControlPlaneSecurityGroup"
+  name        = local.eks_sg_name
   description = "EKS Security Group"
   vpc_id      = var.vpc_id
 
   egress {
     from_port   = 0
     to_port     = 0
-    protocol    = -1
+    protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
     description = "Allow all outbound traffic"
   }
@@ -31,20 +45,14 @@ resource "aws_security_group" "eks_sg" {
 resource "aws_iam_role" "eks_cluster" {
   name = "eks-cluster-${var.cluster_name}"
 
-  assume_role_policy = <<POLICY
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Service": "eks.amazonaws.com"
-      },
-      "Action": "sts:AssumeRole"
-    }
-  ]
-}
-POLICY
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [{
+      Effect    = "Allow",
+      Principal = { Service = "eks.amazonaws.com" },
+      Action    = "sts:AssumeRole"
+    }]
+  })
 
   tags = local.common_tags
 }
@@ -60,10 +68,10 @@ resource "aws_eks_cluster" "eks" {
   role_arn = aws_iam_role.eks_cluster.arn
 
   vpc_config {
-    subnet_ids           = var.subnet_ids
-    security_group_ids   = [aws_security_group.eks_sg.id]
+    subnet_ids              = var.subnet_ids
+    security_group_ids      = [aws_security_group.eks_sg.id]
     endpoint_private_access = true
-    endpoint_public_access  = false
+    endpoint_public_access  = true
   }
 
   encryption_config {
@@ -83,9 +91,7 @@ resource "aws_eks_cluster" "eks" {
     Name = var.cluster_name
   }, local.common_tags)
 
-  depends_on = [
-    aws_iam_role_policy_attachment.eks_cluster_policy
-  ]
+  depends_on = [aws_iam_role_policy_attachment.eks_cluster_policy]
 }
 
 resource "aws_kms_key" "eks_secrets" {
@@ -94,33 +100,32 @@ resource "aws_kms_key" "eks_secrets" {
   enable_key_rotation     = true
 
   tags = merge({
-    Name = "eks-secrets-kms-key"
+    Name = local.eks_kms_key_name
   }, local.common_tags)
 }
 
 resource "aws_kms_alias" "eks_secrets_alias" {
-  name          = "alias/eks-secrets"
+  name          = local.eks_kms_key_alias
   target_key_id = aws_kms_key.eks_secrets.key_id
 }
 
-resource "aws_eks_access_entry" "devops_admin_access" {
+resource "aws_eks_access_entry" "iam_access" {
+  for_each      = toset(var.iam_roles)
   cluster_name  = aws_eks_cluster.eks.name
-  principal_arn = "arn:aws:iam::232247293372:role/Eviden-DSS-Automation"
+  principal_arn = each.value
   type          = "STANDARD"
 }
 
 resource "aws_iam_role" "eks_worker_nodes" {
-  name = "eks-node-group-nodes"
+  name = local.eks_node_role_name
 
   assume_role_policy = jsonencode({
+    Version = "2012-10-17",
     Statement = [{
-      Action = "sts:AssumeRole"
-      Effect = "Allow"
-      Principal = {
-        Service = "ec2.amazonaws.com"
-      }
+      Effect    = "Allow",
+      Principal = { Service = "ec2.amazonaws.com" },
+      Action    = "sts:AssumeRole"
     }]
-    Version = "2012-10-17"
   })
 
   tags = local.common_tags
@@ -147,16 +152,16 @@ resource "aws_iam_role_policy_attachment" "nodes_ssm_policy" {
 }
 
 resource "aws_launch_template" "eks_nodes" {
-  for_each = local.environments
+  for_each      = local.eks_environments
   name_prefix   = "${each.key}-launch-template"
-  description   = "Launch template for EKS managed nodes for ${each.key} namespaces"
-  instance_type = "m5.xlarge"
+  description   = "Launch template for EKS managed nodes in ${each.key}"
+  instance_type = "t3.micro"
 
   block_device_mappings {
     device_name = "/dev/xvda"
 
     ebs {
-      volume_size           = 200
+      volume_size           = 50
       volume_type           = "gp3"
       encrypted             = true
       delete_on_termination = true
@@ -173,7 +178,6 @@ resource "aws_launch_template" "eks_nodes" {
 
   tag_specifications {
     resource_type = "instance"
-
     tags = merge({
       Name = "${each.key}-ihub-node"
     }, local.common_tags)
@@ -181,7 +185,6 @@ resource "aws_launch_template" "eks_nodes" {
 
   tag_specifications {
     resource_type = "volume"
-
     tags = local.common_tags
   }
 
@@ -189,7 +192,7 @@ resource "aws_launch_template" "eks_nodes" {
 }
 
 resource "aws_eks_node_group" "managed_nodes" {
-  for_each = local.environments
+  for_each        = local.eks_environments
   cluster_name    = aws_eks_cluster.eks.name
   node_group_name = each.value
   node_role_arn   = aws_iam_role.eks_worker_nodes.arn
@@ -215,7 +218,7 @@ resource "aws_eks_node_group" "managed_nodes" {
 
   labels = {
     role = "workers"
-    env = each.key
+    env  = each.key
   }
 
   tags = merge({

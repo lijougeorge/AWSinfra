@@ -15,11 +15,12 @@ variable "cluster_version" {
 
 variable "subnet_ids" {
   description = "List of subnet IDs for EKS"
-  type = list(string)
+  type        = list(string)
 }
+
 variable "enable_cluster_log_types" {
   description = "Enable Cluster Logs"
-  type = list(string)
+  type        = list(string)
 }
 
 variable "desired_size" {
@@ -50,6 +51,14 @@ variable "vpc_id" {
 variable "prefix" {
   description = "Prefix for resource names"
   type        = string
-  
 }
 
+variable "iam_roles" {
+  description = "List of IAM role ARNs to grant EKS access"
+  type        = list(string)
+}
+
+variable "environment" {
+  description = "The deployment environment (e.g. dev, uat, prod)"
+  type        = string
+}

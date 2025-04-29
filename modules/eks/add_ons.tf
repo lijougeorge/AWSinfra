@@ -1,103 +1,157 @@
-# Get cluster info using the cluster_name variable
-data "aws_eks_cluster" "eks_cluster" {
-  name = var.cluster_name
+data "tls_certificate" "eks" {
+  url = aws_eks_cluster.eks.identity[0].oidc[0].issuer
 }
 
-# Get OIDC provider URL from the UAT cluster
-data "aws_iam_openid_connect_provider" "oidc" {
-  url = data.aws_eks_cluster.eks_cluster.identity[0].oidc[0].issuer
+resource "aws_iam_openid_connect_provider" "eks" {
+  client_id_list  = ["sts.amazonaws.com"]
+  thumbprint_list = [data.tls_certificate.eks.certificates[0].sha1_fingerprint]
+  url             = aws_eks_cluster.eks.identity[0].oidc[0].issuer
 }
 
-# Local value to hold the stripped OIDC URL
-locals {
-  oidc_url = replace(data.aws_eks_cluster.eks_cluster.identity[0].oidc[0].issuer, "https://", "")
+data "aws_iam_policy_document" "vpc_cni_assume_role" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    effect  = "Allow"
+
+    condition {
+      test     = "StringEquals"
+      variable = "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:sub"
+      values   = ["system:serviceaccount:kube-system:aws-node"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.eks.arn]
+    }
+  }
 }
 
-# Create IAM role for EFS CSI Driver
-resource "aws_iam_role" "efs_csi_driver" {
-  name = "${var.cluster_name}-efs-csi-driver-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17",
-    Statement = [
-      {
-        Effect = "Allow",
-        Principal = {
-          Federated = "arn:aws:iam::${var.Account_ID}:oidc-provider/${local.oidc_url}"
-        },
-        Action = "sts:AssumeRoleWithWebIdentity",
-        Condition = {
-          StringEquals = {
-            "${local.oidc_url}:sub" = "system:serviceaccount:kube-system:efs-csi-controller-sa"
-          }
-        }
-      }
-    ]
-  })
+resource "aws_iam_role" "vpc_cni" {
+  name               = "eks-vpc-cni-irsa-role"
+  assume_role_policy = data.aws_iam_policy_document.vpc_cni_assume_role.json
+  tags               = local.common_tags
 }
 
-# Attach required policy to the EFS CSI role
-resource "aws_iam_role_policy_attachment" "efs_csi_driver_policy" {
-  role       = aws_iam_role.efs_csi_driver.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEFSCSIDriverPolicy"
+resource "aws_iam_role_policy_attachment" "vpc_cni" {
+  role       = aws_iam_role.vpc_cni.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
 }
 
-# EFS CSI Addon
-resource "aws_eks_addon" "aws_efs_csi_driver" {
-  cluster_name             = var.cluster_name
-  addon_name               = "aws-efs-csi-driver"
-  service_account_role_arn = aws_iam_role.efs_csi_driver.arn
+data "aws_iam_policy_document" "ebs_assume_role" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    effect  = "Allow"
+
+    condition {
+      test     = "StringEquals"
+      variable = "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:sub"
+      values   = ["system:serviceaccount:kube-system:ebs-csi-controller-sa"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.eks.arn]
+    }
+  }
 }
 
-# IAM Role for EBS CSI Driver
-resource "aws_iam_role" "ebs_csi_driver" {
-  name = "${var.cluster_name}-ebs-csi-driver-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17",
-    Statement = [
-      {
-        Effect = "Allow",
-        Principal = {
-          Federated = "arn:aws:iam::${var.Account_ID}:oidc-provider/${local.oidc_url}"
-        },
-        Action = "sts:AssumeRoleWithWebIdentity",
-        Condition = {
-          StringEquals = {
-            "${local.oidc_url}:sub" = "system:serviceaccount:kube-system:ebs-csi-controller-sa"
-          }
-        }
-      }
-    ]
-  })
+resource "aws_iam_role" "ebs_csi" {
+  name               = "eks-ebs-csi-driver-irsa-role"
+  assume_role_policy = data.aws_iam_policy_document.ebs_assume_role.json
+  tags               = local.common_tags
 }
 
-# Attach required policy to the EBS CSI role
-resource "aws_iam_role_policy_attachment" "ebs_csi_driver_policy" {
-  role       = aws_iam_role.ebs_csi_driver.name
+resource "aws_iam_role_policy_attachment" "ebs_csi" {
+  role       = aws_iam_role.ebs_csi.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
 }
 
-# EBS CSI Addon
-resource "aws_eks_addon" "aws_ebs_csi_driver" {
-  cluster_name             = var.cluster_name
-  addon_name               = "aws-ebs-csi-driver"
-  service_account_role_arn = aws_iam_role.ebs_csi_driver.arn
+data "aws_iam_policy_document" "efs_assume_role" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    effect  = "Allow"
+
+    condition {
+      test     = "StringEquals"
+      variable = "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:sub"
+      values   = ["system:serviceaccount:kube-system:efs-csi-controller-sa"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.eks.arn]
+    }
+  }
 }
 
-# Core EKS Addons
+resource "aws_iam_role" "efs_csi" {
+  name               = "eks-efs-csi-driver-irsa-role"
+  assume_role_policy = data.aws_iam_policy_document.efs_assume_role.json
+  tags               = local.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "efs_csi" {
+  role       = aws_iam_role.efs_csi.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEFSCSIDriverPolicy"
+}
 
 resource "aws_eks_addon" "vpc_cni" {
-  cluster_name = var.cluster_name
-  addon_name   = "vpc-cni"
+  cluster_name                = aws_eks_cluster.eks.name
+  addon_name                  = "vpc-cni"
+  service_account_role_arn    = aws_iam_role.vpc_cni.arn
+  resolve_conflicts_on_create = "OVERWRITE"
+  resolve_conflicts_on_update = "OVERWRITE"
+  tags                        = local.common_tags
+}
+
+resource "aws_eks_addon" "aws_ebs_csi_driver" {
+  cluster_name                = aws_eks_cluster.eks.name
+  addon_name                  = "aws-ebs-csi-driver"
+  service_account_role_arn    = aws_iam_role.ebs_csi.arn
+  resolve_conflicts_on_create = "OVERWRITE"
+  resolve_conflicts_on_update = "OVERWRITE"
+  tags                        = local.common_tags
+}
+
+resource "aws_eks_addon" "aws_efs_csi_driver" {
+  cluster_name                = aws_eks_cluster.eks.name
+  addon_name                  = "aws-efs-csi-driver"
+  service_account_role_arn    = aws_iam_role.efs_csi.arn
+  resolve_conflicts_on_create = "OVERWRITE"
+  resolve_conflicts_on_update = "OVERWRITE"
+  tags                        = local.common_tags
 }
 
 resource "aws_eks_addon" "coredns" {
-  cluster_name = var.cluster_name
-  addon_name   = "coredns"
+  cluster_name                = aws_eks_cluster.eks.name
+  addon_name                  = "coredns"
+  resolve_conflicts_on_create = "OVERWRITE"
+  resolve_conflicts_on_update = "OVERWRITE"
+  tags                        = local.common_tags
 }
 
 resource "aws_eks_addon" "kube_proxy" {
-  cluster_name = var.cluster_name
-  addon_name   = "kube-proxy"
+  cluster_name                = aws_eks_cluster.eks.name
+  addon_name                  = "kube-proxy"
+  resolve_conflicts_on_create = "OVERWRITE"
+  resolve_conflicts_on_update = "OVERWRITE"
+  tags                        = local.common_tags
 }
