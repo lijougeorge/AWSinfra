@@ -4,7 +4,7 @@ set -e
 ACTION=$1
 MODULE_DIR=$2
 PLAN_FILE="tfplan"
-S3_BUCKET="teraform-tfstate-bucket-654654406075"
+S3_BUCKET="terraform-tfstate-bucket-654654406075"
 REGION="eu-west-1"
 
 TFVARS_JSON="terraform.tfvars.json"
