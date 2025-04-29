@@ -141,3 +141,7 @@ variable "iam_roles" {
   description = "List of IAM role ARNs to grant EKS access"
   type        = list(string)
 }
+variable "environment" {
+  description = "The deployment environment (e.g. dev, uat, prod)"
+  type        = string
+}
